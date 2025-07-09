@@ -93,7 +93,7 @@ export const Organizations = () => {
     };
 
     const isOrgOwner = (org) => {
-        return org.ownerId === user.id;
+        return org.isOwner;
     };
 
     const showConfirmDialog = (action, text) => {
@@ -221,7 +221,8 @@ export const Organizations = () => {
 
             {selectedOrganization && (
                 <InviteMemberDialog open={inviteDialogOpen} onClose={() => setInviteDialogOpen(false)}
-                                    organization={selectedOrganization} />
+                                    organization={selectedOrganization} 
+                                    refreshMembers={() => fetchMembers(selectedOrganization.id)} />
             )}
 
             <ActionConfirmDialog open={confirmDialogOpen} setOpen={setConfirmDialogOpen} text={confirmText}

@@ -47,4 +47,9 @@ module.exports = db.define("servers", {
         type: Sequelize.JSON,
         allowNull: true,
     },
+    monitoringEnabled: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false,
+        allowNull: false,
+    },
 }, { freezeTableName: true, createdAt: false, updatedAt: false });

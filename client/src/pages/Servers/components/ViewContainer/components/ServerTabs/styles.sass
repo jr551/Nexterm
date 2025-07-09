@@ -12,10 +12,39 @@
     width: 2rem
     height: 2rem
 
+  .layout-controls
+    display: flex
+    gap: 0.5rem
+    align-items: center
+    margin-right: 1rem
+    padding-right: 1rem
+    border-right: 1px solid colors.$gray
+
+    .layout-btn
+      cursor: pointer
+      padding: 0.5rem
+      border-radius: 4px
+      transition: all 0.2s ease
+      color: colors.$subtext
+
+      &:hover
+        background-color: colors.$gray
+        color: colors.$white
+
+      &.active
+        background-color: colors.$primary
+        color: colors.$white
+
   .tabs
     display: flex
     gap: 0.5rem
+    flex: 1
+    overflow-x: auto
+    overflow-y: hidden
+    scrollbar-width: none
 
+    &::-webkit-scrollbar
+      display: none
 
     .server-tab
       display: flex
@@ -24,13 +53,24 @@
       align-items: center
       border-radius: 0.5rem 0.5rem 0 0
       border-bottom: 2px solid transparent
-      cursor: pointer
+      cursor: grab
       overflow: hidden
       white-space: nowrap
+      flex-shrink: 0
+      transition: all 0.2s ease
 
       &:hover
         background-color: colors.$gray
         border-bottom: 2px solid colors.$primary-opacity
+
+      &.dragging
+        cursor: grabbing
+        transform: rotate(2deg)
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2)
+
+      &.drop-target
+        border-left: 3px solid colors.$primary
+        background-color: colors.$primary-opacity
 
       svg
         width: 1.5rem
@@ -39,6 +79,23 @@
       h2
         margin: 0
         font-size: 1.3rem
+        flex: 1
+
+      .tab-actions
+        display: flex
+        align-items: center
+        gap: 0.25rem
+        cursor: pointer
+
+        .close-btn
+          opacity: 0.6
+          transition: all 0.2s ease
+          padding: 0.25rem
+          border-radius: 0.25rem
+
+          &:hover
+            opacity: 1
+            background-color: colors.$error-opacity
 
     .server-tab-active
       background-color: colors.$gray

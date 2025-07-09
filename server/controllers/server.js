@@ -5,6 +5,7 @@ const { listFolders } = require("./folder");
 const { hasOrganizationAccess, validateFolderAccess } = require("../utils/permission");
 const { Op } = require("sequelize");
 const OrganizationMember = require("../models/OrganizationMember");
+const { listIdentities } = require("./identity");
 
 const validateServerAccess = async (accountId, server, errorMessage = "You don't have permission to access this server") => {
     if (!server) return { code: 401, message: "Server does not exist" };
@@ -23,19 +24,23 @@ const validateServerAccess = async (accountId, server, errorMessage = "You don't
 const validateIdentities = async (accountId, identities, organizationId) => {
     if (!identities || identities.length === 0) return { valid: true };
 
-    const identityQuery = { id: identities };
-    if (organizationId) {
-        identityQuery.organizationId = organizationId;
-    } else {
-        identityQuery.accountId = accountId;
-    }
+    const allAccessibleIdentities = await listIdentities(accountId);
+    const accessibleIdentityIds = allAccessibleIdentities.map(identity => identity.id);
 
-    const foundIdentities = await Identity.findAll({ where: identityQuery });
-    if (foundIdentities.length !== identities.length) {
+    const invalidIdentities = identities.filter(id => !accessibleIdentityIds.includes(id));
+
+    if (invalidIdentities.length > 0) {
         return {
             valid: false,
             error: { code: 501, message: "One or more identities do not exist or you don't have access to them" },
         };
+    }
+
+    if (organizationId) {
+        const hasAccess = await hasOrganizationAccess(accountId, organizationId);
+        if (!hasAccess) {
+            return { valid: false, error: { code: 403, message: "You don't have access to this organization" } };
+        }
     }
 
     return { valid: true };
@@ -155,6 +160,7 @@ module.exports.listServers = async (accountId) => {
             folder.entries.push({
                 type: "server", id: server.id, icon: server.icon, name: server.name,
                 position: server.position, identities: JSON.parse(server.identities || "[]"), protocol: server.protocol,
+                ip: server.ip,
             });
         }
     });
@@ -175,7 +181,7 @@ module.exports.listServers = async (accountId) => {
         if (folder) {
             folder.entries.push({
                 type: "pve-server", id: server.id, name: server.name, online: server.online === 1,
-                entries: JSON.parse(server.resources || "[]"),
+                entries: JSON.parse(server.resources || "[]"), ip: server.ip,
             });
         }
     });
@@ -194,6 +200,7 @@ module.exports.duplicateServer = async (accountId, serverId) => {
         id: undefined,
         name: server.name + " (Copy)",
         identities: Array.isArray(server.identities) ? server.identities : JSON.parse(server.identities || "[]"),
+        config: server.config ? JSON.parse(server.config) : {},
     });
 };
 

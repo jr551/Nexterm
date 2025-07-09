@@ -25,76 +25,77 @@ export const ServerDialog = ({ open, onClose, currentFolderId, editServerId }) =
     const [protocol, setProtocol] = useState(null);
     const [identities, setIdentities] = useState([]);
     const [config, setConfig] = useState({});
+    const [monitoringEnabled, setMonitoringEnabled] = useState(false);
 
     const [identityUpdates, setIdentityUpdates] = useState({});
 
     const [activeTab, setActiveTab] = useState(0);
 
-    const postIdentity = async (identity) => {
-        try {
-            if (identity.username === "") identity.username = undefined;
-            if (identity.passphrase === "") identity.passphrase = undefined;
-            if (identity.password === "") identity.password = undefined;
-            if (identity.sshKey === null) identity.sshKey = undefined;
-
-            const result = await putRequest("identities", {
-                name: identity.name, username: identity.username, type: identity.authType,
-                password: identity.password, sshKey: identity.sshKey, passphrase: identity.passphrase,
-            });
-
-            if (result.id) setIdentityUpdates({});
-
-            refreshIdentities();
-
-            return result;
-        } catch (error) {
-            sendToast("Error", error.message || "Failed to create identity");
-            console.error(error);
-        }
+    const normalizeIdentity = (identity) => {
+        const normalized = { ...identity };
+        if (normalized.username === "") normalized.username = undefined;
+        if (normalized.passphrase === "") normalized.passphrase = undefined;
+        if (normalized.password === "") normalized.password = undefined;
+        if (normalized.sshKey === null) normalized.sshKey = undefined;
+        return normalized;
     };
 
-    const patchIdentity = async (identity) => {
-        try {
-            if (identity.username === "") identity.username = undefined;
-            if (identity.passphrase === "") identity.passphrase = undefined;
-            if (identity.password === "") identity.password = undefined;
-            if (identity.sshKey === null) identity.sshKey = undefined;
-
-            await patchRequest("identities/" + identity.id, {
-                name: identity.name, username: identity.username, type: identity.authType,
-                password: identity.password, sshKey: identity.sshKey, passphrase: identity.passphrase,
-            });
-
-            setIdentityUpdates({});
-            refreshIdentities();
-        } catch (error) {
-            sendToast("Error", error.message || "Failed to update identity");
-            console.error(error);
-        }
-    };
+    const buildIdentityPayload = (identity) => ({
+        name: identity.name,
+        username: identity.username,
+        type: identity.authType,
+        password: identity.password,
+        sshKey: identity.sshKey,
+        passphrase: identity.passphrase,
+    });
 
     const updateIdentities = async () => {
+        const allIdentityIds = new Set();
+
+        identities.forEach(id => allIdentityIds.add(id));
+
         for (const identityId of Object.keys(identityUpdates)) {
-            if (identityId === "new") {
-                return await postIdentity(identityUpdates[identityId]);
+            const identity = normalizeIdentity(identityUpdates[identityId]);
+
+            if (identityId.startsWith("new-")) {
+                const payload = buildIdentityPayload(identity);
+                try {
+                    const result = await putRequest("identities", payload);
+                    if (result.id) allIdentityIds.add(result.id);
+                } catch (error) {
+                    sendToast("Error", error.message || "Failed to create identity");
+                    console.error(error);
+                    return null;
+                }
+            } else if (identity.linked) {
+                allIdentityIds.add(parseInt(identityId));
             } else {
-                await patchIdentity({ ...identityUpdates[identityId], id: identityId });
+                const payload = buildIdentityPayload(identity);
+                try {
+                    await patchRequest("identities/" + identityId, payload);
+                    allIdentityIds.add(parseInt(identityId));
+                } catch (error) {
+                    sendToast("Error", error.message || "Failed to update identity");
+                    console.error(error);
+                    return null;
+                }
             }
         }
+
+        return Array.from(allIdentityIds);
     };
 
     const createServer = async () => {
         try {
-            let identity = null;
-            if (Object.keys(identityUpdates).length > 0) {
-                identity = await updateIdentities();
-                if (!identity) return;
-                loadIdentities();
-            }
+            const serverIdentityIds = await updateIdentities();
+            if (serverIdentityIds === null) return;
+
+            loadIdentities();
 
             const result = await putRequest("servers", {
                 name, icon: icon, ip, port, protocol: protocol, config,
-                folderId: currentFolderId, identities: identity?.id ? [identity?.id] : [],
+                folderId: currentFolderId, identities: serverIdentityIds,
+                monitoringEnabled
             });
 
             loadServers();
@@ -110,11 +111,14 @@ export const ServerDialog = ({ open, onClose, currentFolderId, editServerId }) =
 
     const patchServer = async () => {
         try {
-            const identity = await updateIdentities();
+            const serverIdentityIds = await updateIdentities();
+            if (serverIdentityIds === null) return;
 
-            await patchRequest("servers/" + editServerId, { 
-                name, icon: icon, ip, port, protocol: protocol, config,
-                identities: identity?.id ? [identity?.id] : undefined});
+            await patchRequest("servers/" + editServerId, {
+                name, icon, ip, port, protocol: protocol, config,
+                identities: serverIdentityIds,
+                monitoringEnabled
+            });
 
             loadServers();
             sendToast("Success", "Server updated successfully");
@@ -131,7 +135,7 @@ export const ServerDialog = ({ open, onClose, currentFolderId, editServerId }) =
             return;
         }
         editServerId ? patchServer() : createServer();
-    }, [name, ip, port, protocol, editServerId, identityUpdates, currentFolderId, config]);
+    }, [name, icon, ip, port, protocol, editServerId, identityUpdates, currentFolderId, config, monitoringEnabled]);
 
     useEffect(() => {
         if (!open) return;
@@ -139,11 +143,12 @@ export const ServerDialog = ({ open, onClose, currentFolderId, editServerId }) =
         if (editServerId) {
             getRequest("servers/" + editServerId).then((server) => {
                 setName(server.name);
-                setIcon(server.icon);
+                setIcon(server.icon || "server");
                 setIp(server.ip);
                 setPort(server.port);
                 setProtocol(server.protocol);
                 setIdentities(server.identities);
+                setMonitoringEnabled(Boolean(server.monitoringEnabled ?? true));
 
                 try {
                     if (server.config) {
@@ -164,6 +169,7 @@ export const ServerDialog = ({ open, onClose, currentFolderId, editServerId }) =
             setProtocol(null);
             setIdentities([]);
             setConfig({});
+            setMonitoringEnabled(false);
         }
 
         setIdentityUpdates({});
@@ -226,8 +232,9 @@ export const ServerDialog = ({ open, onClose, currentFolderId, editServerId }) =
                                                      protocol={protocol} setProtocol={setProtocol} />}
                     {activeTab === 1 &&
                         <IdentityPage serverIdentities={identities} setIdentityUpdates={setIdentityUpdates}
-                                      refreshIdentities={refreshIdentities} identityUpdates={identityUpdates} />}
-                    {activeTab === 2 && <SettingsPage protocol={protocol} config={config} setConfig={setConfig} />}
+                                      identityUpdates={identityUpdates} setIdentities={setIdentities} />}
+                    {activeTab === 2 && <SettingsPage protocol={protocol} config={config} setConfig={setConfig} 
+                                                       monitoringEnabled={monitoringEnabled} setMonitoringEnabled={setMonitoringEnabled} />}
                 </div>
 
                 <Button className="server-dialog-button" onClick={handleSubmit}

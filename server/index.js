@@ -1,9 +1,13 @@
 const express = require("express");
 const path = require("path");
 const db = require("./utils/database");
+const packageJson = require("../package.json");
+const MigrationRunner = require("./utils/migrationRunner");
 const { authenticate } = require("./middlewares/auth");
 const expressWs = require("express-ws");
 const { startPVEUpdater } = require("./utils/pveUpdater");
+const { ensureInternalProvider } = require("./controllers/oidc");
+const monitoringService = require("./utils/monitoringService");
 const {
     refreshAppSources,
     startAppUpdater,
@@ -35,29 +39,38 @@ app.use("/api/servers/guacd", require("./middlewares/guacamole"));
 app.use("/api/servers/sftp-download", require("./routes/sftpDownload"));
 
 app.use("/api/users", authenticate, isAdmin, require("./routes/users"));
+app.use("/api/ai", authenticate, require("./routes/ai"));
 app.use("/api/sessions", authenticate, require("./routes/session"));
 app.use("/api/folders", authenticate, require("./routes/folder"));
 app.use("/api/servers", authenticate, require("./routes/server"));
+app.use("/api/monitoring", authenticate, require("./routes/monitoring"));
 app.use("/api/pve-servers", authenticate, require("./routes/pveServer"));
 app.use("/api/identities", authenticate, require("./routes/identity"));
 app.use("/api/snippets", authenticate, require("./routes/snippet"));
 app.use("/api/organizations", authenticate, require("./routes/organization"));
 
 app.ws("/api/apps/installer", require("./routes/appInstaller"));
+app.ws("/api/scripts/executor", require("./routes/scriptExecutor"));
 app.use("/api/apps", authenticate, require("./routes/apps"));
+app.use("/api/scripts", authenticate, require("./routes/scripts"));
 
 if (process.env.NODE_ENV === "production") {
     app.use(express.static(path.join(__dirname, "../dist")));
 
-    app.get("*", (req, res) =>
+    app.get("*name", (req, res) =>
         res.sendFile(path.join(__dirname, "../dist", "index.html"))
     );
 } else {
     require("dotenv").config();
-    app.get("*", (req, res) =>
+    app.get("*name", (req, res) =>
         res.status(500).sendFile(path.join(__dirname, "templates", "env.html"))
     );
 }
+
+if (!process.env.ENCRYPTION_KEY) throw new Error("ENCRYPTION_KEY environment variable is not set. Please set it to a random hex string.");
+
+console.log(`Starting Nexterm version ${packageJson.version} in ${process.env.NODE_ENV || 'development'} mode...`);
+console.log(`🛈 Running on Node.js ${process.version}\n`);
 
 db.authenticate()
     .catch((err) => {
@@ -73,7 +86,10 @@ db.authenticate()
                 (process.env.DB_TYPE === "mysql" ? "server" : "file")
         );
 
-        await db.sync({ alter: true, force: false });
+        const migrationRunner = new MigrationRunner();
+        await migrationRunner.runMigrations();
+
+        await ensureInternalProvider();
 
         startPVEUpdater();
 
@@ -83,6 +99,8 @@ db.authenticate()
 
         await refreshAppSources();
 
+        monitoringService.start();
+
         app.listen(APP_PORT, () =>
             console.log(`Server listening on port ${APP_PORT}`)
         );
@@ -90,6 +108,8 @@ db.authenticate()
 
 process.on("SIGINT", async () => {
     console.log("Shutting down the server...");
+
+    monitoringService.stop();
 
     await db.close();
 

@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState, useContext } from "react";
 import { UserContext } from "@/common/contexts/UserContext.jsx";
-import { Terminal as Xterm } from "xterm";
+import { useAI } from "@/common/contexts/AIContext.jsx";
+import { Terminal as Xterm } from "@xterm/xterm";
 import { useTheme } from "@/common/contexts/ThemeContext.jsx";
-import { FitAddon } from "xterm-addon-fit/src/FitAddon";
+import { useTerminalSettings } from "@/common/contexts/TerminalSettingsContext.jsx";
+import { FitAddon } from "@xterm/addon-fit";
 import SnippetsMenu from "./components/SnippetsMenu";
+import AICommandPopover from "./components/AICommandPopover";
 import { mdiCodeArray } from "@mdi/js";
 import Icon from "@mdi/react";
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 import "./styles/xterm.sass";
 
 const XtermRenderer = ({ session, disconnectFromServer, pve }) => {
@@ -15,13 +18,44 @@ const XtermRenderer = ({ session, disconnectFromServer, pve }) => {
     const wsRef = useRef(null);
     const { sessionToken } = useContext(UserContext);
     const { theme } = useTheme();
+    const { getCurrentTheme, selectedFont, fontSize, cursorStyle, cursorBlink, selectedTheme } = useTerminalSettings();
+    const { isAIAvailable } = useAI();
     const [showSnippetsMenu, setShowSnippetsMenu] = useState(false);
+    const [showAIPopover, setShowAIPopover] = useState(false);
+    const [aiPopoverPosition, setAIPopoverPosition] = useState(null);
 
-    const toggleSnippetsMenu = () => {
-        setShowSnippetsMenu(!showSnippetsMenu);
+    const toggleSnippetsMenu = () => setShowSnippetsMenu(!showSnippetsMenu);
+
+    const toggleAIPopover = () => {
+        if (!showAIPopover && termRef.current) {
+            const term = termRef.current;
+            const terminalElement = ref.current;
+
+            if (terminalElement) {
+                const rect = terminalElement.getBoundingClientRect();
+                const buffer = term.buffer.active;
+
+                const charWidth = rect.width / term.cols;
+                const charHeight = rect.height / term.rows;
+
+                const cursorX = rect.left + (buffer.cursorX * charWidth);
+                const cursorY = rect.top + (buffer.cursorY * charHeight);
+
+                setAIPopoverPosition({ x: cursorX, y: cursorY });
+            }
+        }
+        setShowAIPopover(!showAIPopover);
     };
 
     const handleSnippetSelected = (command) => {
+        if (termRef.current && wsRef.current) {
+            const commandWithNewline = command.endsWith("\n") ? command : command + "\n";+
+            wsRef.current.send(commandWithNewline);
+            termRef.current.focus();
+        }
+    };
+
+    const handleAICommandGenerated = (command) => {
         if (termRef.current && wsRef.current) {
             wsRef.current.send(command);
         }
@@ -30,15 +64,34 @@ const XtermRenderer = ({ session, disconnectFromServer, pve }) => {
     useEffect(() => {
         if (!sessionToken) return;
 
+        const terminalTheme = getCurrentTheme();
+        const isLightTerminalTheme = selectedTheme === "light";
+        
         const term = new Xterm({
-            cursorBlink: true,
-            fontSize: 16,
-            fontFamily: "monospace",
+            cursorBlink: cursorBlink,
+            cursorStyle: cursorStyle,
+            fontSize: fontSize,
+            fontFamily: selectedFont,
             theme: {
-                background: theme === "light" ? "#F3F3F3" : "#13181C",
-                foreground: theme === "light" ? "#000000" : "#F5F5F5",
-                brightWhite: theme === "light" ? "#464545" : "#FFFFFF",
-                cursor: theme === "light" ? "#000000" : "#F5F5F5"
+                background: (theme === "light" && isLightTerminalTheme) ? "#F3F3F3" : terminalTheme.background,
+                foreground: (theme === "light" && isLightTerminalTheme) ? "#000000" : terminalTheme.foreground,
+                black: terminalTheme.black,
+                red: terminalTheme.red,
+                green: terminalTheme.green,
+                yellow: terminalTheme.yellow,
+                blue: terminalTheme.blue,
+                magenta: terminalTheme.magenta,
+                cyan: terminalTheme.cyan,
+                white: terminalTheme.white,
+                brightBlack: terminalTheme.brightBlack,
+                brightRed: terminalTheme.brightRed,
+                brightGreen: terminalTheme.brightGreen,
+                brightYellow: terminalTheme.brightYellow,
+                brightBlue: terminalTheme.brightBlue,
+                brightMagenta: terminalTheme.brightMagenta,
+                brightCyan: terminalTheme.brightCyan,
+                brightWhite: (theme === "light" && isLightTerminalTheme) ? "#464545" : terminalTheme.brightWhite,
+                cursor: (theme === "light" && isLightTerminalTheme) ? "#000000" : terminalTheme.cursor
             },
         });
 
@@ -116,6 +169,15 @@ const XtermRenderer = ({ session, disconnectFromServer, pve }) => {
             ws.send(data);
         });
 
+        term.attachCustomKeyEventHandler((event) => {
+            if (event.ctrlKey && event.key === "k" && event.type === "keydown" && isAIAvailable()) {
+                event.preventDefault();
+                toggleAIPopover();
+                return false;
+            }
+            return true;
+        });
+
         return () => {
             window.removeEventListener("resize", handleResize);
             ws.close();
@@ -124,7 +186,7 @@ const XtermRenderer = ({ session, disconnectFromServer, pve }) => {
             termRef.current = null;
             wsRef.current = null;
         };
-    }, [sessionToken]);
+    }, [sessionToken, selectedFont, fontSize, cursorStyle, cursorBlink, selectedTheme]);
 
     return (
         <div className="xterm-container">
@@ -141,6 +203,11 @@ const XtermRenderer = ({ session, disconnectFromServer, pve }) => {
                 onClose={() => setShowSnippetsMenu(false)}
                 onSelect={handleSnippetSelected}
             />
+            {isAIAvailable() && (
+                <AICommandPopover visible={showAIPopover} onClose={() => setShowAIPopover(false)}
+                                  onCommandGenerated={handleAICommandGenerated} position={aiPopoverPosition}
+                                  focusTerminal={() => termRef.current?.focus()} />
+            )}
         </div>
     );
 };

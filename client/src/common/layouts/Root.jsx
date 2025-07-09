@@ -5,6 +5,8 @@ import { ServerProvider } from "@/common/contexts/ServerContext.jsx";
 import { IdentityProvider } from "@/common/contexts/IdentityContext.jsx";
 import { ToastProvider } from "@/common/contexts/ToastContext.jsx";
 import { ThemeProvider } from "@/common/contexts/ThemeContext.jsx";
+import { TerminalSettingsProvider } from "@/common/contexts/TerminalSettingsContext.jsx";
+import { AIProvider } from "@/common/contexts/AIContext.jsx";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { SessionProvider } from "@/common/contexts/SessionContext.jsx";
@@ -15,22 +17,26 @@ export default () => {
         <DndProvider backend={HTML5Backend}>
             <ToastProvider>
                 <ThemeProvider>
-                    <UserProvider>
-                        <ServerProvider>
-                            <IdentityProvider>
-                                <SnippetProvider>
-                                    <SessionProvider>
-                                        <div className="content-wrapper">
-                                            <Sidebar />
-                                            <div className="main-content">
-                                                <Outlet />
-                                            </div>
-                                        </div>
-                                    </SessionProvider>
-                                </SnippetProvider>
-                            </IdentityProvider>
-                        </ServerProvider>
-                    </UserProvider>
+                    <TerminalSettingsProvider>
+                        <UserProvider>
+                            <AIProvider>
+                                <ServerProvider>
+                                    <IdentityProvider>
+                                        <SnippetProvider>
+                                            <SessionProvider>
+                                                <div className="content-wrapper">
+                                                    <Sidebar />
+                                                    <div className="main-content">
+                                                        <Outlet />
+                                                    </div>
+                                                </div>
+                                            </SessionProvider>
+                                        </SnippetProvider>
+                                    </IdentityProvider>
+                                </ServerProvider>
+                            </AIProvider>
+                        </UserProvider>
+                    </TerminalSettingsProvider>
                 </ThemeProvider>
             </ToastProvider>
         </DndProvider>

@@ -2,12 +2,15 @@ import "./styles.sass";
 import { useEffect, useState } from "react";
 import { deleteRequest, getRequest, patchRequest } from "@/common/utils/RequestUtil.js";
 import Button from "@/common/components/Button";
+import ToggleSwitch from "@/common/components/ToggleSwitch";
 import Icon from "@mdi/react";
-import { mdiPencil, mdiPlus, mdiShieldAccountOutline, mdiTrashCan } from "@mdi/js";
+import { mdiPencil, mdiPlus, mdiShieldAccountOutline, mdiTrashCan, mdiLock } from "@mdi/js";
 import ProviderDialog from "./components/ProviderDialog";
 import { ActionConfirmDialog } from "@/common/components/ActionConfirmDialog/ActionConfirmDialog.jsx";
+import { useToast } from "@/common/contexts/ToastContext.jsx";
 
 export const Authentication = () => {
+    const { sendToast } = useToast();
     const [providers, setProviders] = useState([]);
     const [createDialogOpen, setCreateDialogOpen] = useState(false);
     const [editProvider, setEditProvider] = useState(null);
@@ -29,7 +32,7 @@ export const Authentication = () => {
             await loadProviders();
             setDeleteDialogOpen(false);
         } catch (error) {
-            console.error("Error deleting provider:", error);
+            sendToast("Error", error.message || "Error deleting provider");
         }
     };
 
@@ -38,7 +41,7 @@ export const Authentication = () => {
             await patchRequest(`oidc/admin/providers/${providerId}`, { enabled });
             await loadProviders();
         } catch (error) {
-            console.error("Error toggling provider:", error);
+            sendToast("Error", error.message || "Error toggling provider");
         }
     };
 
@@ -56,32 +59,39 @@ export const Authentication = () => {
             {providers.map(provider => (
                 <div key={provider.id} className="provider-item">
                     <div className="left-area">
-                        <Icon path={mdiShieldAccountOutline} className="menu" size={1.5} />
+                        <Icon path={provider.isInternal ? mdiLock : mdiShieldAccountOutline} className="menu" size={1.5} />
                         <div className="provider-info">
-                            <h2>{provider.name}</h2>
-                            <p>{provider.issuer}</p>
+                            <h2>
+                                {provider.name}
+                                {provider.isInternal && <span className="internal-badge">System</span>}
+                            </h2>
+                            <p>{provider.isInternal ? "Username and password authentication" : provider.issuer}</p>
                         </div>
                     </div>
 
                     <div className="provider-actions">
-                        <label className="switch">
-                            <input type="checkbox" checked={provider.enabled}
-                                   onChange={() => toggleProvider(provider.id, !provider.enabled)} />
-                            <span className="slider" />
-                        </label>
+                        <ToggleSwitch 
+                            checked={provider.enabled}
+                            onChange={(checked) => toggleProvider(provider.id, checked)}
+                            id={`provider-toggle-${provider.id}`}
+                        />
 
-                        <Icon path={mdiPencil} className="menu"
-                            onClick={() => {
-                                setEditProvider(provider);
-                                setCreateDialogOpen(true);
-                            }}
-                        />
-                        <Icon path={mdiTrashCan} className="menu delete-menu"
-                            onClick={() => {
-                                setSelectedProviderId(provider.id);
-                                setDeleteDialogOpen(true);
-                            }}
-                        />
+                        {!provider.isInternal && (
+                            <>
+                                <Icon path={mdiPencil} className="menu"
+                                    onClick={() => {
+                                        setEditProvider(provider);
+                                        setCreateDialogOpen(true);
+                                    }}
+                                />
+                                <Icon path={mdiTrashCan} className="menu delete-menu"
+                                    onClick={() => {
+                                        setSelectedProviderId(provider.id);
+                                        setDeleteDialogOpen(true);
+                                    }}
+                                />
+                            </>
+                        )}
                     </div>
                 </div>
             ))}
